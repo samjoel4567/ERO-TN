@@ -12,6 +12,7 @@ import {
   Database,
   Flame,
   Activity,
+  HeartPulse,
   ShieldAlert
 } from 'lucide-react';
 import { SYSTEM_INFO } from '../data/mockData';
@@ -21,6 +22,7 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
     { id: 'Command Centre', label: 'Command Centre', icon: LayoutDashboard },
     { id: 'Live Incident Map', label: 'Live Incident Map', icon: Compass, badge: 'GIS' },
     { id: 'Scenario Simulator', label: 'Scenario Simulator', icon: SlidersHorizontal, badge: 'SIM' },
+    { id: 'Cardiac Arrest', label: 'Cardiac Arrest', icon: HeartPulse, badge: 'SIM' },
     { id: 'Ambulance Fleet', label: 'Ambulance Fleet', icon: Truck, meta: '1,353' },
     { id: 'Rescue Teams', label: 'Rescue Teams', icon: Users },
     { id: 'Hospital Network', label: 'Hospital Network', icon: Building2, meta: '339' },
@@ -40,7 +42,7 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
 
       {/* Sidebar Container (Frosted Glassmorphism Command Aesthetic) */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-[#121518]/80 backdrop-blur-xl backdrop-saturate-150 text-stone-200 border-r border-white/[0.08] shadow-[4px_0_24px_rgba(0,0,0,0.5)] flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 relative overflow-hidden ${
+        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-[#121518]/80 backdrop-blur-xl backdrop-saturate-150 text-stone-200 border-r border-white/[0.08] shadow-[4px_0_24px_rgba(0,0,0,0.5)] flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 overflow-hidden ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

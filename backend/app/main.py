@@ -7,6 +7,7 @@ from typing import List, Optional
 import pulp
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from .cardiac_arrest.router import router as cardiac_arrest_router
 
 from .models.schemas import (
     OptimizationRequest,
@@ -41,6 +42,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(cardiac_arrest_router)
 
 
 @app.get("/health")

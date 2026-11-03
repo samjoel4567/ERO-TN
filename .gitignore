@@ -1,4 +1,5 @@
 node_modules
+.npm-cache/
 dist
 dist-ssr
 *.local
@@ -13,6 +14,7 @@ __pycache__/
 *.so
 .pytest_cache/
 .coverage
+backend/.simulation/
 htmlcov/
 .venv/
 venv/
