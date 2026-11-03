@@ -95,6 +95,8 @@ export default function GisMap({
       zoom: 7.2,
       minZoom: 6,
       maxZoom: 18,
+      // Leaflet 1.9 zoom transition timers can outlive a React view change.
+      zoomAnimation: false,
       zoomControl: false
     });
 
@@ -172,8 +174,11 @@ export default function GisMap({
     layerGroupsRef.current.vulnerability.addTo(map);
 
     mapInstanceRef.current = map;
+    const resizeObserver = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    resizeObserver.observe(mapContainerRef.current);
 
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -992,11 +997,11 @@ export default function GisMap({
   };
 
   return (
-    <div className="relative w-full h-[580px] rounded-xl border border-ivory-border overflow-hidden bg-ivory-200 shadow-xs flex flex-col">
+    <div role="region" aria-label="Tamil Nadu GIS map" data-testid="gis-map" className="relative isolate z-0 flex w-full min-w-0 flex-col overflow-hidden rounded-xl border border-ivory-border bg-ivory-200 shadow-xs">
       {/* Top Map Control Bar */}
-      <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+      <div role="group" aria-label="Map controls" className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-ivory-border p-3">
         {/* Left Telemetry Coordinates Box */}
-        <div className="bg-graphite-900 border border-graphite-border px-3 py-1.5 rounded-lg text-xs text-stone-100 shadow-md flex items-center gap-3 pointer-events-auto" style={{ backgroundColor: '#171A1D', color: '#F5F5F4' }}>
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-graphite-border bg-graphite-900 px-3 py-1.5 text-xs text-stone-100 shadow-md" style={{ backgroundColor: '#171A1D', color: '#F5F5F4' }}>
           <div className="flex items-center gap-1.5 font-mono text-[11px] text-burnt-400 font-semibold">
             <Compass className="w-3.5 h-3.5 text-burnt-500 animate-spin-slow" />
             <span>TAMIL NADU GIS</span>
@@ -1012,7 +1017,7 @@ export default function GisMap({
         </div>
 
         {/* Right Layer Toggles Bar */}
-        <div className="flex items-center gap-1.5 bg-graphite-900 border border-graphite-border p-1 rounded-lg shadow-md pointer-events-auto" style={{ backgroundColor: '#171A1D', color: '#F5F5F4' }}>
+        <div role="group" aria-label="Map layers" className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-graphite-border bg-graphite-900 p-1 shadow-md" style={{ backgroundColor: '#171A1D', color: '#F5F5F4' }}>
           {/* Hospitals Toggle */}
           <button
             onClick={() => toggleLayer('hospitals')}
@@ -1107,9 +1112,9 @@ export default function GisMap({
         </div>
       </div>
 
-      {/* Floating Selected Coordinate Indicator Bar (When user clicks map) */}
+      {/* Selected coordinates occupy their own row as the controls wrap. */}
       {selectedMapCoord && (
-        <div className="absolute top-14 left-3 z-[1000] bg-graphite-900/95 backdrop-blur-xs border border-burnt-500/50 px-3 py-1.5 rounded-lg text-xs text-stone-200 shadow-xl flex items-center gap-3 animate-in fade-in">
+        <div role="status" aria-label="Selected map coordinates" className="flex min-w-0 flex-wrap items-center gap-3 border-b border-burnt-500/50 bg-graphite-900 px-3 py-2 text-xs text-stone-200">
           <div className="w-2 h-2 rounded-full bg-burnt-500 animate-ping shrink-0" />
           <div>
             <span className="text-[9px] uppercase font-bold text-burnt-400 block font-mono">Map Coordinate Selected</span>
@@ -1135,25 +1140,28 @@ export default function GisMap({
         </div>
       )}
 
-      {/* Leaflet Map DOM Canvas */}
+      {/* Keep Leaflet panes and the feature inspector inside this viewport. */}
+      <div data-testid="gis-map-viewport" className="relative isolate z-0 h-[360px] w-full min-w-0 sm:h-[480px]">
       <div
         ref={mapContainerRef}
         id="pals-leaflet-map"
-        className="w-full h-full z-0 cursor-crosshair"
+        className="absolute inset-0 z-0 h-full w-full cursor-crosshair"
       />
 
       {/* Selected Feature Card Drawer (When clicking a hospital, settlement, or fleet record) */}
       {activeFeatureInfo && (
-        <div className="absolute bottom-10 left-3 z-[1000] max-w-sm w-full bg-graphite-900/95 backdrop-blur-sm border border-graphite-border rounded-xl p-3.5 text-xs text-stone-200 shadow-xl animate-in fade-in duration-150">
+        <div role="region" aria-label="Selected map feature" className="absolute bottom-3 left-3 right-3 z-10 max-h-[calc(100%-1.5rem)] max-w-sm overflow-y-auto rounded-xl border border-graphite-border bg-graphite-900 p-3.5 text-xs text-stone-200 shadow-xl">
           <div className="flex items-start justify-between">
             <span className="text-[10px] font-mono uppercase font-bold text-burnt-400">
               {activeFeatureInfo.type === 'hospital' && 'Hospital Facility Inspector'}
               {activeFeatureInfo.type === 'fleet' && 'District Ambulance Record'}
               {activeFeatureInfo.type === 'settlement' && 'Village Settlement Record'}
+              {activeFeatureInfo.type === 'vulnerability' && 'Potential Hospital Access Gap'}
               {activeFeatureInfo.type === 'incident' && 'Benchmark Incident File'}
             </span>
             <button
               onClick={() => setActiveFeatureInfo(null)}
+              aria-label="Close map feature details"
               className="text-stone-400 hover:text-white text-xs px-1"
             >
               ✕
@@ -1212,6 +1220,15 @@ export default function GisMap({
             </div>
           )}
 
+          {activeFeatureInfo.type === 'vulnerability' && (
+            <div className="mt-1.5 space-y-1">
+              <h4 className="text-sm font-bold text-white">{activeFeatureInfo.data.name}</h4>
+              <p className="text-[11px] text-stone-300">{activeFeatureInfo.data.district} · {activeFeatureInfo.data.taluk}</p>
+              <p className="text-[11px] text-orange-200">Nearest mapped hospital: {activeFeatureInfo.data.nearestHospitalKm} km straight-line distance.</p>
+              <p className="text-[10px] text-stone-400">Hospital access screening threshold: {HOSPITAL_ACCESS_GAP_KM} km. Ambulance proximity and live availability are unknown.</p>
+            </div>
+          )}
+
           {activeFeatureInfo.type === 'incident' && (
             <div className="mt-1.5 space-y-1">
               <div className="flex items-center justify-between">
@@ -1230,19 +1247,16 @@ export default function GisMap({
           )}
         </div>
       )}
+      </div>
 
       {/* Bottom Technical Status Bar */}
-      <div className="absolute bottom-2 left-3 z-[1000] pointer-events-none">
-        <div className="bg-graphite-900 border border-graphite-border px-3 py-1.5 rounded-lg text-[11px] text-stone-100 shadow-md flex items-center gap-3 pointer-events-auto" style={{ backgroundColor: '#171A1D', color: '#F5F5F4' }}>
+      <div role="status" aria-label="Map dataset status" className="border-t border-graphite-border bg-graphite-900 px-3 py-2 text-[11px] text-stone-100">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" style={{ backgroundColor: '#171A1D', color: '#F5F5F4' }}>
           <span className="text-burnt-400 font-bold font-mono">DATASET VALIDATION:</span>
           <span>339 Hospitals Mapped</span>
-          <span className="text-graphite-700">•</span>
           <span>2,391 Village Coordinates</span>
-          <span className="text-graphite-700">•</span>
           <span>1,353 Fleet across 38 Districts</span>
-          <span className="text-graphite-700">|</span>
-          <span className="text-orange-200">{vulnerabilitySettlements.length} communities &gt;{HOSPITAL_ACCESS_GAP_KM} km from mapped hospitals • ambulance proximity unknown</span>
-          <span className="text-graphite-700">|</span>
+          <span className="min-w-0 basis-64 flex-1 text-orange-200">{vulnerabilitySettlements.length} communities &gt;{HOSPITAL_ACCESS_GAP_KM} km from mapped hospitals • ambulance proximity unknown</span>
           <span className="text-tealops-300 font-mono">Zoom: {zoomLevel}x</span>
         </div>
       </div>

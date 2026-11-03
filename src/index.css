@@ -39,6 +39,9 @@
 
 /* Leaflet Customizations for Command / Aviation Theme */
 .leaflet-container {
+  /* Pane/control z-indices belong to the map, below app navigation and dialogs. */
+  isolation: isolate;
+  z-index: 0;
   font-family: 'Inter', system-ui, sans-serif !important;
   background-color: #F5F1E8 !important;
 }
@@ -80,7 +83,12 @@
   font-size: 11px !important;
   padding: 4px 8px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
-  white-space: nowrap !important;
+  /* Leaflet panes have no intrinsic width; size labels from their text. */
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 4rem));
+  white-space: normal !important;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .gis-tooltip:before {

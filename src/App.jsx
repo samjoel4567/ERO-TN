@@ -66,6 +66,7 @@ export default function App() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           onToggleMobileMenu={() => setIsMobileOpen(!isMobileOpen)}
+          isMobileOpen={isMobileOpen}
         />
 
         {/* Workspace Body */}

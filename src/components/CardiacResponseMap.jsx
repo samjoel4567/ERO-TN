@@ -25,7 +25,8 @@ export default function CardiacResponseMap({ incident, preview, onPick }) {
     incident?.assignments?.hospitals?.map((h) => [h.id, h.latitude, h.longitude])]);
 
   useEffect(() => {
-    const map = L.map(container.current, { center: [12.9249, 80.119], zoom: 14, scrollWheelZoom: false });
+    // Avoid delayed zoom-transition callbacks after navigation removes the map.
+    const map = L.map(container.current, { center: [12.9249, 80.119], zoom: 14, scrollWheelZoom: false, zoomAnimation: false });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
     }).addTo(map);
@@ -111,7 +112,7 @@ export default function CardiacResponseMap({ incident, preview, onPick }) {
     }
   }, [incident, preview, routes, transportKey]);
 
-  return <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+  return <div className="relative isolate z-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
     <div ref={container} className="h-[360px] sm:h-[440px] w-full z-0" aria-label="Cardiac arrest simulation resource map" />
     <div className="p-3 text-[11px] text-stone-500 space-y-1">
       <p><span className="text-rose-700 font-semibold">● Incident</span> · <span className="text-burnt-600">● Ambulance</span> · <span className="text-emerald-700">● AED</span> · <span className="text-violet-700">● Responder</span> · <span className="text-sky-700">● Hospital</span></p>
