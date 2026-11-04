@@ -73,7 +73,7 @@ export default function AmbulanceFleetView({ onSelectUnit }) {
 
       {/* Filter & Search Bar */}
       <div className="bg-white border border-ivory-border rounded-xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 max-w-md">
+        <div className="flex min-w-0 basis-full items-center gap-2 sm:basis-40 flex-1 max-w-md">
           <div className="relative w-full">
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -86,12 +86,13 @@ export default function AmbulanceFleetView({ onSelectUnit }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           {/* District Selector */}
           <select
             value={districtFilter}
+            aria-label="Filter ambulances by district"
             onChange={(e) => setDistrictFilter(e.target.value)}
-            className="px-2.5 py-1.5 text-xs bg-ivory-50 border border-ivory-border rounded-lg text-stone-700 cursor-pointer"
+            className="w-full min-w-0 max-w-full px-2.5 py-1.5 text-xs bg-ivory-50 border border-ivory-border rounded-lg text-stone-700 cursor-pointer sm:w-auto"
           >
             <option value="All">All 38 Districts</option>
             {TAMIL_NADU_DISTRICTS.map((d) => (
@@ -102,8 +103,9 @@ export default function AmbulanceFleetView({ onSelectUnit }) {
           {/* Type Selector */}
           <select
             value={typeFilter}
+            aria-label="Filter ambulances by vehicle type"
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-2.5 py-1.5 text-xs bg-ivory-50 border border-ivory-border rounded-lg text-stone-700 cursor-pointer"
+            className="w-full min-w-0 max-w-full px-2.5 py-1.5 text-xs bg-ivory-50 border border-ivory-border rounded-lg text-stone-700 cursor-pointer sm:w-auto"
           >
             <option value="All">All Vehicle Types</option>
             <option value="ALS">Advanced Life Support (ALS)</option>

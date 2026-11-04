@@ -174,7 +174,7 @@ export default function OptimisationResultsView({ onNavigateToSimulator }) {
           </div>
 
           {/* Mode Switcher */}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="text-xs font-semibold text-stone-600">Mode:</span>
             <div className="flex rounded-lg border border-ivory-border overflow-hidden text-xs font-mono">
               <button

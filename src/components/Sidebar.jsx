@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   MapPin,
@@ -12,15 +12,57 @@ import {
   Database,
   Flame,
   Activity,
+  HeartPulse,
+  X,
   ShieldAlert
 } from 'lucide-react';
 import { SYSTEM_INFO } from '../data/mockData';
 
 export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, isMobileOpen, setIsMobileOpen }) {
+  const sidebarRef = useRef(null);
+  const closeButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!isMobileOpen) return undefined;
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    if (desktop.matches) {
+      setIsMobileOpen(false);
+      return undefined;
+    }
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+    const handleKey = (event) => {
+      if (event.key === 'Escape') setIsMobileOpen(false);
+      if (event.key !== 'Tab') return;
+      const buttons = sidebarRef.current?.querySelectorAll('button:not([disabled])');
+      if (!buttons?.length) return;
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const handleResize = (event) => { if (event.matches) setIsMobileOpen(false); };
+    document.addEventListener('keydown', handleKey);
+    desktop.addEventListener('change', handleResize);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKey);
+      desktop.removeEventListener('change', handleResize);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [isMobileOpen, setIsMobileOpen]);
+
   const navItems = [
     { id: 'Command Centre', label: 'Command Centre', icon: LayoutDashboard },
     { id: 'Live Incident Map', label: 'Live Incident Map', icon: Compass, badge: 'GIS' },
     { id: 'Scenario Simulator', label: 'Scenario Simulator', icon: SlidersHorizontal, badge: 'SIM' },
+    { id: 'Cardiac Arrest', label: 'Cardiac Arrest', icon: HeartPulse, badge: 'SIM' },
     { id: 'Ambulance Fleet', label: 'Ambulance Fleet', icon: Truck, meta: '1,353' },
     { id: 'Rescue Teams', label: 'Rescue Teams', icon: Users },
     { id: 'Hospital Network', label: 'Hospital Network', icon: Building2, meta: '339' },
@@ -32,7 +74,9 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
     <>
       {/* Mobile Backdrop */}
       {isMobileOpen && (
-        <div
+        <button
+          type="button"
+          aria-label="Close navigation backdrop"
           className="fixed inset-0 bg-graphite-950/70 backdrop-blur-xs z-40 lg:hidden"
           onClick={() => setIsMobileOpen(false)}
         />
@@ -40,8 +84,13 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
 
       {/* Sidebar Container (Frosted Glassmorphism Command Aesthetic) */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-[#121518]/80 backdrop-blur-xl backdrop-saturate-150 text-stone-200 border-r border-white/[0.08] shadow-[4px_0_24px_rgba(0,0,0,0.5)] flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 relative overflow-hidden ${
-          isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+        ref={sidebarRef}
+        id="primary-sidebar"
+        role={isMobileOpen ? 'dialog' : undefined}
+        aria-modal={isMobileOpen || undefined}
+        aria-label="Main navigation"
+        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-[#121518]/80 backdrop-blur-xl backdrop-saturate-150 text-stone-200 border-r border-white/[0.08] shadow-[4px_0_24px_rgba(0,0,0,0.5)] flex flex-col transition-transform duration-300 ease-in-out lg:visible lg:translate-x-0 overflow-hidden ${
+          isMobileOpen ? 'visible translate-x-0' : 'invisible -translate-x-full'
         }`}
       >
         {/* Ambient Glass Reflections / Glow Spheres */}
@@ -50,7 +99,7 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
         <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-burnt-600/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Brand Header */}
-        <div className="p-5 border-b border-white/[0.08] relative z-10 bg-white/[0.02]">
+        <div className="shrink-0 p-5 border-b border-white/[0.08] relative z-10 bg-white/[0.02]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-burnt-500 to-burnt-600 flex items-center justify-center shadow-lg shadow-burnt-600/30 ring-1 ring-white/20">
               <Compass className="w-5 h-5 text-white animate-spin-slow" />
@@ -66,6 +115,9 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
                 Operations & Optimisation OS
               </p>
             </div>
+            <button ref={closeButtonRef} type="button" onClick={() => setIsMobileOpen(false)} aria-label="Close navigation" className="shrink-0 rounded-lg p-1.5 text-stone-300 hover:bg-white/10 hover:text-white lg:hidden">
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Dataset Status Pill (Frosted Glass) */}
@@ -79,7 +131,7 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
         </div>
 
         {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 graphite-scroll relative z-10">
+        <div className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-1 graphite-scroll relative z-10">
           <div className="px-3 pb-2 text-[10px] font-semibold tracking-wider uppercase text-stone-400 font-mono">
             Navigation Areas
           </div>
@@ -134,7 +186,7 @@ export default function Sidebar({ activeNav = 'Command Centre', setActiveNav, is
         </div>
 
         {/* Footer Project Badge (Frosted Glassmorphic Panel) */}
-        <div className="p-4 border-t border-white/[0.08] bg-black/20 backdrop-blur-md relative z-10">
+        <div className="shrink-0 p-4 border-t border-white/[0.08] bg-black/20 backdrop-blur-md relative z-10">
           <div className="p-3 rounded-xl bg-white/[0.03] backdrop-blur-md border border-white/[0.08] text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
             <div className="flex items-center gap-2 text-stone-200 font-semibold mb-1">
               <ShieldAlert className="w-3.5 h-3.5 text-burnt-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.4)]" />

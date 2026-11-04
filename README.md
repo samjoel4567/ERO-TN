@@ -23,6 +23,39 @@
 
 ## 🌟 Key Capabilities
 
+### Cardiac Arrest Response Simulation
+
+Open **Cardiac Arrest** in the sidebar to report a suspected cardiac arrest, review extracted caller information, and coordinate synthetic ALS ambulances, AEDs and community responders. The module reuses the existing PuLP solver and hospital profiles. It includes persisted incidents, access-hour filtering, resource reservations across simultaneous cardiac scenarios, a Leaflet response map, independent resource events, explicit CPR/AED-use simulation, disruption controls and controlled A/B/C milestone comparisons.
+
+All AEDs, responders and notifications are fictional. Hospital capability and capacity fields are scenario assumptions. The cardiac reservation registry is separate from the stateless experiments in the original Scenario Simulator. No clinical outcomes or survival benefits are predicted.
+
+The cardiac workspace now uses every mapped hospital as a mock resource site: **339 hospital AEDs and 678 hospital ambulances (1 ALS + 1 BLS per site)**, in addition to the original demonstrations (**347 AED records and 690 ambulances total**). Each hospital also has six synthetic receiving places and a cardiac-only mock capability profile. The map offers independent clustered AED/fleet layers and statewide browsing. Discovery starts at 25 km; the solver can allocate from the entire statewide mock fleet. Hospital-origin ambulances can deliver their site's mock AED. Saved runs keep their original assignments; create a new report to exercise the expanded network.
+
+**Run locally on Windows (two PowerShell terminals):**
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+```powershell
+npm ci
+npm run dev
+```
+
+Open [the local dashboard](http://127.0.0.1:5173/) and select **Cardiac Arrest → Create simulation report → Save review (optional) → Dispatch simulation resources → Play**. The report clock uses IST; change it to exercise AED opening hours. Use **New report** to create another incident while the first retains its reservations. Cancel or complete simulations to release resources.
+
+Run the original and cardiac tests with:
+
+```powershell
+$env:PYTHONPATH = 'backend'
+.\.venv\Scripts\python.exe -m unittest discover -s backend\app\tests -p 'test_*.py' -v
+npm run build
+```
+
+Incident data persists under `backend/.simulation/` and is excluded from Git. Override `CARDIAC_DB_PATH` to isolate demo runs. Optional Gemini extraction requires both `GEMINI_API_KEY` and `GEMINI_MODEL` in the backend environment; this sends the synthetic caller description to Google's API. With either unset, deterministic extraction is used. No AI key is needed for the demo. See [integration contracts and assumptions](docs/cardiac-arrest-integration.md).
+
 ### 1. 🗺️ Tamil Nadu 2D Spatial GIS Engine
 - **339 Mapped Hospital Nodes**: Real geographic coordinates categorised into Medical College Hospitals (MCH), District Headquarter Hospitals (DHQH), and Sub-District Hospitals (SDH).
 - **2,391 Settlement Coordinates**: Indexed village-level centroids retained for spatial accessibility screening.

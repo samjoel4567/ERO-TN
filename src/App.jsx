@@ -5,6 +5,7 @@ import CommandCentreView from './components/CommandCentreView';
 import GisMap from './components/GisMap';
 import SimulationController from './components/SimulationController';
 import ScenarioSimulator from './components/ScenarioSimulator';
+import CardiacArrestView from './components/CardiacArrestView';
 import AmbulanceFleetView from './components/AmbulanceFleetView';
 import HospitalNetworkView from './components/HospitalNetworkView';
 import RescueTeamsView from './components/RescueTeamsView';
@@ -65,6 +66,7 @@ export default function App() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           onToggleMobileMenu={() => setIsMobileOpen(!isMobileOpen)}
+          isMobileOpen={isMobileOpen}
         />
 
         {/* Workspace Body */}
@@ -171,6 +173,8 @@ export default function App() {
           {activeNav === 'Scenario Simulator' && (
             <ScenarioSimulator />
           )}
+
+          {activeNav === 'Cardiac Arrest' && <CardiacArrestView />}
 
           {/* 4. AMBULANCE FLEET VIEW */}
           {activeNav === 'Ambulance Fleet' && (

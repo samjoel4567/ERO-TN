@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { SYSTEM_INFO } from '../data/mockData';
 
-export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggleMobileMenu }) {
+export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggleMobileMenu, isMobileOpen }) {
   const [timeStr, setTimeStr] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -62,35 +62,37 @@ export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggl
 
   return (
     <header className="sticky top-0 z-30 bg-[#FBF9F5]/95 backdrop-blur-md border-b border-ivory-border shadow-xs">
-      <div className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16">
+      <div className="flex h-16 min-w-0 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         {/* Left: Mobile Toggle & Page Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"
             onClick={onToggleMobileMenu}
-            className="p-1.5 rounded-lg text-stone-600 hover:text-stone-900 hover:bg-ivory-200 lg:hidden focus:outline-none"
+            className="shrink-0 p-1.5 rounded-lg text-stone-600 hover:text-stone-900 hover:bg-ivory-200 lg:hidden focus:outline-none"
             aria-label="Toggle navigation sidebar"
+            aria-expanded={isMobileOpen}
+            aria-controls="primary-sidebar"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-stone-900 tracking-tight font-sans">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate text-base sm:text-lg font-bold text-stone-900 tracking-tight font-sans" title={activeNav}>
                 {activeNav}
               </h1>
-              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-ivory-200 text-stone-700 border border-ivory-border">
+              <span className="hidden shrink-0 2xl:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-ivory-200 text-stone-700 border border-ivory-border">
                 PALS COMMAND CONSOLE
               </span>
             </div>
-            <p className="text-[11px] text-stone-500 hidden md:block">
+            <p className="truncate text-[11px] text-stone-500 hidden md:block">
               {SYSTEM_INFO.title} • {SYSTEM_INFO.jurisdiction}
             </p>
           </div>
         </div>
 
         {/* Center: Search Field */}
-        <div className="hidden lg:flex flex-1 max-w-md mx-6">
+        <div className="hidden min-w-0 xl:flex flex-1 max-w-md mx-4">
           <div className="relative w-full">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
               <Search className="w-3.5 h-3.5" />
@@ -100,6 +102,7 @@ export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggl
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search fleet units (1,353), mapped hospitals (339), districts..."
+              aria-label="Search fleet, hospitals and districts"
               className="w-full pl-8 pr-8 py-1.5 text-xs bg-ivory-50 border border-ivory-border rounded-lg text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-burnt-500/20 focus:border-burnt-600 transition-all font-sans"
             />
             {searchQuery && (
@@ -114,9 +117,9 @@ export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggl
         </div>
 
         {/* Right: Technical Readout, Notifications, User */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           {/* Dual Clock Readout (Aviation Style) */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-ivory-200 border border-ivory-border text-xs font-mono font-bold text-stone-800">
+          <div className="hidden whitespace-nowrap sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-ivory-200 border border-ivory-border text-xs font-mono font-bold text-stone-800">
             <Clock className="w-3.5 h-3.5 text-burnt-600" />
             <span>{timeStr || '12:00:00 IST'}</span>
           </div>
@@ -127,13 +130,15 @@ export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggl
               onClick={() => setShowNotifications(!showNotifications)}
               className="relative p-2 rounded-lg text-stone-600 hover:text-stone-900 hover:bg-ivory-200 transition-colors focus:outline-none"
               aria-label="Simulation Notifications"
+              aria-expanded={showNotifications}
+              aria-controls="simulation-notifications"
             >
               <Bell className="w-4 h-4" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-burnt-600 rounded-full" />
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-graphite-900 text-stone-200 rounded-xl shadow-xl border border-graphite-border z-50 overflow-hidden animate-in fade-in duration-100">
+              <div id="simulation-notifications" role="region" aria-label="Simulation notifications" className="fixed inset-x-3 top-[4.5rem] z-50 overflow-hidden rounded-xl border border-graphite-border bg-graphite-900 text-stone-200 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96">
                 <div className="p-3 bg-graphite-950 border-b border-graphite-border flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-xs text-white uppercase tracking-wider font-mono">
@@ -145,6 +150,7 @@ export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggl
                   </div>
                   <button
                     onClick={() => setShowNotifications(false)}
+                    aria-label="Close notifications"
                     className="text-stone-400 hover:text-white"
                   >
                     <X className="w-4 h-4" />
@@ -177,7 +183,7 @@ export default function TopNav({ activeNav, searchQuery, setSearchQuery, onToggl
             <div className="w-8 h-8 rounded-lg bg-graphite-900 text-burnt-400 flex items-center justify-center font-bold font-mono text-xs border border-graphite-border shadow-xs">
               P1
             </div>
-            <div className="hidden md:block text-left">
+            <div className="hidden 2xl:block text-left">
               <div className="text-xs font-bold text-stone-900">Dr. A. Raman</div>
               <div className="text-[10px] text-stone-500 font-mono">Operations Controller</div>
             </div>

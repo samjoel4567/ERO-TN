@@ -1,0 +1,10 @@
+[
+  {"id":"SIM-R-01","label":"Demo responder 01","latitude":12.9253,"longitude":80.1186,"training_status":"CPR_AED","availability_status":"available","data_origin":"synthetic_simulation"},
+  {"id":"SIM-R-02","label":"Demo responder 02","latitude":12.9266,"longitude":80.1202,"training_status":"CPR","availability_status":"available","data_origin":"synthetic_simulation"},
+  {"id":"SIM-R-03","label":"Demo responder 03","latitude":12.9290,"longitude":80.1171,"training_status":"CPR_AED","availability_status":"available","data_origin":"synthetic_simulation"},
+  {"id":"SIM-R-04","label":"Demo responder 04","latitude":12.9250,"longitude":80.1192,"training_status":"unverified","availability_status":"available","data_origin":"synthetic_simulation"},
+  {"id":"SIM-R-05","label":"Demo responder 05","latitude":12.9252,"longitude":80.1192,"training_status":"CPR_AED","availability_status":"unavailable","data_origin":"synthetic_simulation"},
+  {"id":"SIM-R-06","label":"Demo responder 06","latitude":13.0085,"longitude":80.2032,"training_status":"CPR_AED","availability_status":"available","data_origin":"synthetic_simulation"},
+  {"id":"SIM-R-07","label":"Demo responder 07","latitude":11.0287,"longitude":77.0117,"training_status":"CPR_AED","availability_status":"available","data_origin":"synthetic_simulation"},
+  {"id":"SIM-R-08","label":"Demo responder 08","latitude":9.9864,"longitude":78.0636,"training_status":"CPR_AED","availability_status":"available","data_origin":"synthetic_simulation"}
+]
