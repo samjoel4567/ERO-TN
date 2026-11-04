@@ -6,8 +6,8 @@ from fastapi import HTTPException
 
 from ..models.schemas import IncidentInput, OptimizationRequest, OptimizationParameters
 from ..optimization.solver import solve_emergency_dispatch_optimization
-from ..services.data_loader import (get_default_bases, discover_nearby_hospitals_for_incident,
-                                    calculate_haversine_km, DEFAULT_AMBULANCE_TYPES)
+from ..services.data_loader import DEFAULT_AMBULANCE_TYPES
+from .resource_catalog import cardiac_bases, cardiac_hospitals
 from .aed_service import nearby_aeds, walking_minutes
 from .responder_service import nearby_responders
 from .tracking_service import TERMINAL, event, transition, update_analytics
@@ -29,18 +29,16 @@ def allocate_transport(incident, active):
                            severity="CRITICAL", severity_weight=2,
                            total_casualties=report.victim_count, critical_casualties=report.victim_count,
                            lat=report.latitude, lng=report.longitude, description=report.description)
-    bases = get_default_bases()
+    bases = cardiac_bases()
     used = reserved_ids(active, "ambulances") | set(incident.exclusions["ambulances"])
     slots = {}
     for base in bases:
         for kind, count in base.available_units.items():
             available = [f"SIM-{base.id}-{kind}-{n + 1}" for n in range(count)
                          if f"SIM-{base.id}-{kind}-{n + 1}" not in used]
-            if calculate_haversine_km(report.latitude, report.longitude, base.lat, base.lng) > 80:
-                available = []
             slots[(base.id, kind)] = available
             base.available_units[kind] = len(available)
-    hospitals = discover_nearby_hospitals_for_incident(demand, max_radius_km=120, limit=80)
+    hospitals = cardiac_hospitals()
     hospitals = [h for h in hospitals if h.id not in incident.exclusions["hospitals"]
                  and all(h.capabilities.get(cap) is True for cap in ("emergencyDepartment", "icu", "emergencyEquipment"))]
     for hospital in hospitals:
@@ -58,6 +56,8 @@ def allocate_transport(incident, active):
         for slot in slots[(allocation.base_id, allocation.ambulance_type)][:allocation.quantity]:
             ambulances.append({**allocation.model_dump(), "id": slot, "quantity": 1, "latitude": base.lat,
                                "longitude": base.lng, "status": "assigned", "data_origin": "synthetic_simulation",
+                               "hospital_id": base.id.removeprefix("BASE-HOSP-") if base.id.startswith("BASE-HOSP-") else None,
+                               "equipment": "Mock AED, oxygen and resuscitation kit",
                                "route_source": "Existing solver estimate: 1.35× straight-line distance"})
     for allocation in result.raw_hospital_allocations:
         hospital = hospital_map[allocation.hospital_id]
@@ -66,14 +66,16 @@ def allocate_transport(incident, active):
     resolution = result.incident_resolutions[0]
     return ambulances, destinations, {"solver_status": result.solver_status, "solver_computation_ms": result.execution_time_ms,
                                      "unserved_victims": resolution.unserved_casualties,
-                                     "served_victims": resolution.casualties_served}
+                                     "served_victims": resolution.casualties_served,
+                                     "available_ambulances_at_dispatch": sum(len(v) for v in slots.values()),
+                                     "ambulance_base_count": len(bases), "hospital_candidate_count": len(hospitals)}
 
 
 def scheduled(kind, resource_id, status, at, message):
     return {"kind": kind, "resource_id": resource_id, "status": status, "at_seconds": round(at, 2), "message": message}
 
 
-def community_plan(incident, aeds, responders, mode, now):
+def community_plan(incident, aeds, responders, mode, now, ambulances=()):
     """AED runner in B; eligible responder walks via AED in C. No CPR/use inference."""
     devices, people, schedule = [], [], []
     if mode == "baseline":
@@ -100,6 +102,16 @@ def community_plan(incident, aeds, responders, mode, now):
                                "via_aed": {"latitude": device["latitude"], "longitude": device["longitude"]}})
             else:
                 devices = [{**aeds[0], "status": "identified", "collector_id": None, "arrival_seconds": None}]
+    # A hospital-origin ambulance can carry the mock AED from that same site.
+    carriers = [(a, vehicle) for a in aeds for vehicle in ambulances
+                if a.get("hospital_id") and a["hospital_id"] == vehicle.get("hospital_id")]
+    if carriers:
+        device, vehicle = min(carriers, key=lambda pair: (pair[1]["arrival_seconds"], pair[0]["id"]))
+        if not devices or devices[0]["arrival_seconds"] is None or vehicle["arrival_seconds"] < devices[0]["arrival_seconds"]:
+            devices = [{**device, "status": "identified", "collector_id": vehicle["id"],
+                        "delivery_method": "ambulance", "arrival_seconds": vehicle["arrival_seconds"],
+                        "retrieval_assumption": "Mock hospital AED loaded during the 15-second ambulance mobilization."}]
+            people, collector = [], None
     if mode == "full":
         direct = next((r for r in responders if not collector or r["id"] != collector["id"]), None)
         if direct:
@@ -115,8 +127,9 @@ def community_plan(incident, aeds, responders, mode, now):
         if device["arrival_seconds"] is not None:
             # Retrieval precedes the return leg. Identification alone never implies access.
             return_seconds = walking_minutes(device["latitude"], device["longitude"], report.latitude, report.longitude) * 60
+            retrieved = departure if device.get("delivery_method") == "ambulance" else max(departure, device["arrival_seconds"] - return_seconds)
             schedule.extend([
-                scheduled("aed", device["id"], "retrieved", max(departure, device["arrival_seconds"] - return_seconds), "Synthetic AED retrieved from facility"),
+                scheduled("aed", device["id"], "retrieved", retrieved, "Synthetic AED loaded onto ambulance" if device.get("delivery_method") == "ambulance" else "Synthetic AED retrieved from facility"),
                 scheduled("aed", device["id"], "delivered", device["arrival_seconds"], "Synthetic AED delivered to incident; use not inferred"),
             ])
     return devices, people, schedule
@@ -193,9 +206,10 @@ def dispatch(incident, all_incidents, options):
     incident.elapsed_seconds += 2
     now = incident.elapsed_seconds
     transition(incident, "DISPATCHED")
-    devices, people, schedule = community_plan(incident, aeds, responders, options.mode, now)
+    transport_events = transport_schedule(incident, ambulances, hospitals, now)
+    devices, people, schedule = community_plan(incident, aeds, responders, options.mode, now, ambulances)
     incident.assignments = {"ambulances": ambulances, "hospitals": hospitals, "aeds": devices, "responders": people,
-                            "schedule": schedule + transport_schedule(incident, ambulances, hospitals, now)}
+                            "schedule": schedule + transport_events}
     for person in people:
         event(incident, "responder", "Simulated notification sent", person["id"], "notified")
     for device in devices:
@@ -204,8 +218,8 @@ def dispatch(incident, all_incidents, options):
         event(incident, "ambulance", "Existing PuLP solver assigned synthetic fleet slot", ambulance["id"], "assigned")
     incident.analytics.update(audit)
     incident.comparison = []
-    for mode, label in [("baseline", "A · Ambulance only"), ("aed", "B · Ambulance + AED runner"), ("full", "C · Full coordination")]:
-        d, p, _ = community_plan(incident, aeds, responders, mode, now)
+    for mode, label in [("baseline", "A · Ambulance only"), ("aed", "B · Ambulance + AED coordination"), ("full", "C · Full coordination")]:
+        d, p, _ = community_plan(incident, aeds, responders, mode, now, ambulances)
         incident.comparison.append({"mode": mode, "label": label,
                                     **projected_metrics(ambulances, hospitals, d, p, now, options.scene_minutes),
                                     "unserved_victims": audit["unserved_victims"], "sample_size": 1})
@@ -306,6 +320,19 @@ def replan_transport(incident, all_incidents, disruption):
                              scheduled("incident", None, "COMPLETED", handover + 60, "Simulation completed; reservations released")])
     incident.assignments["ambulances"], incident.assignments["hospitals"] = ambulances, hospitals
     incident.assignments["schedule"] = [e for e in incident.assignments["schedule"] if e["kind"] in {"responder", "aed"}] + schedule
+    orphaned = [a for a in incident.assignments["aeds"] if a.get("delivery_method") == "ambulance"
+                and a["status"] != "delivered" and a["collector_id"] not in {v["id"] for v in ambulances}]
+    if orphaned:
+        orphaned_ids = {a["id"] for a in orphaned}
+        active = commitments(all_incidents, incident.id)
+        candidates = nearby_aeds(incident.report.latitude, incident.report.longitude,
+                                 incident.report.reported_at + timedelta(seconds=now),
+                                 incident.options["search_radius_km"], reserved_ids(active, "aeds"))
+        devices, _, aed_schedule = community_plan(incident, candidates, [], incident.options["mode"], now, ambulances)
+        incident.assignments["aeds"] = [a for a in incident.assignments["aeds"] if a["id"] not in orphaned_ids] + devices
+        incident.assignments["schedule"] = [e for e in incident.assignments["schedule"]
+                                            if e.get("resource_id") not in orphaned_ids] + aed_schedule
+        event(incident, "aed", "Hospital AED delivery replanned after ambulance replacement", status="replanned")
     incident.analytics.update(audit)
     incident.warnings.append("A/B/C projections retain the original dispatch snapshot; actual timeline includes disruptions.")
     event(incident, "disruption", f"{disruption.replace('_', ' ').title()}: existing PuLP solver replanned transport", assigned[0]["id"], "replanned")

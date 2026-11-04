@@ -6,6 +6,7 @@ from . import service
 from .aed_service import nearby_aeds
 from .dispatch_service import commitments, dispatch, reserved_ids
 from .responder_service import nearby_responders
+from .resource_catalog import catalog
 from .schemas import (AssessmentUpdate, CardiacArrestReport, CardiacIncident, DispatchOptions,
                       SimulationAction, StatusUpdate)
 
@@ -21,6 +22,12 @@ def report_incident(payload: CardiacArrestReport):
 def list_incidents():
     with service.store.transaction() as repo:
         return repo.all()
+
+
+@router.get("/cardiac-arrest/catalog")
+def get_catalog(at: datetime | None = None):
+    with service.store.transaction() as repo:
+        return catalog(commitments(repo.all()), at=at)
 
 
 @router.get("/cardiac-arrest/{incident_id}", response_model=CardiacIncident)
@@ -82,7 +89,7 @@ def simulate(incident_id: str, payload: SimulationAction):
 
 @router.get("/aed/nearby")
 def find_aeds(latitude: float = Query(ge=-90, le=90), longitude: float = Query(ge=-180, le=180),
-              radius_km: float = Query(5, gt=0, le=25), at: datetime | None = None):
+              radius_km: float = Query(25, gt=0, le=25), at: datetime | None = None):
     with service.store.transaction() as repo:
         active = commitments(repo.all())
         return {"data_origin": "synthetic_simulation", "resources": nearby_aeds(latitude, longitude,

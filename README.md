@@ -29,6 +29,8 @@ Open **Cardiac Arrest** in the sidebar to report a suspected cardiac arrest, rev
 
 All AEDs, responders and notifications are fictional. Hospital capability and capacity fields are scenario assumptions. The cardiac reservation registry is separate from the stateless experiments in the original Scenario Simulator. No clinical outcomes or survival benefits are predicted.
 
+The cardiac workspace now uses every mapped hospital as a mock resource site: **339 hospital AEDs and 678 hospital ambulances (1 ALS + 1 BLS per site)**, in addition to the original demonstrations (**347 AED records and 690 ambulances total**). Each hospital also has six synthetic receiving places and a cardiac-only mock capability profile. The map offers independent clustered AED/fleet layers and statewide browsing. Discovery starts at 25 km; the solver can allocate from the entire statewide mock fleet. Hospital-origin ambulances can deliver their site's mock AED. Saved runs keep their original assignments; create a new report to exercise the expanded network.
+
 **Run locally on Windows (two PowerShell terminals):**
 
 ```powershell

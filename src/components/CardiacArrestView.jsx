@@ -1,13 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { HeartPulse, Zap, Users, Ambulance, Clock, Play, Pause, Plus, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
-import { cardiacRequest } from '../services/cardiacArrestService';
+import { cardiacRequest, loadCardiacCatalog } from '../services/cardiacArrestService';
 import CardiacResponseMap from './CardiacResponseMap';
+import { calculateHaversineKm } from '../data/scenarioData';
 
 const PRESETS = [
   { label: 'Tambaram · covered', latitude: 12.9249, longitude: 80.119, location_name: 'Demo Tambaram community incident' },
   { label: 'Coimbatore', latitude: 11.0285, longitude: 77.012, location_name: 'Demo Coimbatore civic plaza incident' },
   { label: 'Madurai', latitude: 9.986, longitude: 78.064, location_name: 'Demo Madurai gathering incident' },
-  { label: 'Katpadi · no eligible AED', latitude: 12.9715, longitude: 79.1385, location_name: 'Demo Katpadi incident' },
+  { label: 'Katpadi · hospital resources', latitude: 12.9715, longitude: 79.1385, location_name: 'Demo Katpadi incident' },
 ];
 const EMPTY = { ...PRESETS[0], responsive: 'unknown', breathing_status: 'unknown', victim_count: 1,
   reported_at: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }).replace(' ', 'T').slice(0, 16),
@@ -50,7 +51,9 @@ export default function CardiacArrestView() {
   const [incident, setIncident] = useState(null);
   const [creating, setCreating] = useState(true);
   const [mode, setMode] = useState('full');
-  const [radius, setRadius] = useState(5);
+  const [radius, setRadius] = useState(25);
+  const [catalog, setCatalog] = useState(null);
+  const [catalogError, setCatalogError] = useState('');
   const [review, setReview] = useState({ responsive: 'unknown', breathing_status: 'unknown', victim_count: 1 });
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -78,7 +81,8 @@ export default function CardiacArrestView() {
   }
   async function refresh() {
     await run('Loading incidents', async () => {
-      const list = await cardiacRequest('/cardiac-arrest');
+      const [list, resources] = await Promise.all([cardiacRequest('/cardiac-arrest'), loadCardiacCatalog()]);
+      setCatalog(resources);
       setIncidents(list);
       const savedId = currentRef.current?.id || localStorage.getItem('ero-cardiac-incident');
       const saved = list.find((item) => item.id === savedId) || list[0];
@@ -123,6 +127,27 @@ export default function CardiacArrestView() {
   const canDisrupt = dispatched && !closed;
   const preTransport = canDisrupt && !['TRANSPORTING', 'HOSPITAL_HANDOVER'].includes(incident.status);
   const metrics = active ? incident.analytics : {};
+  const resourceTime = active ? incident.report.reported_at : `${form.reported_at || EMPTY.reported_at}+05:30`;
+  useEffect(() => {
+    let cancelled = false;
+    loadCardiacCatalog(resourceTime).then((resources) => {
+      if (!cancelled) { setCatalog(resources); setCatalogError(''); }
+    }).catch((err) => { if (!cancelled) setCatalogError(err.message); });
+    return () => { cancelled = true; };
+  }, [resourceTime]);
+  const activeIncidents = incidents.filter((i) => !TERMINAL.includes(i.status));
+  const reservedAeds = new Set(activeIncidents.flatMap((i) => i.assignments.aeds || []).map((a) => a.id));
+  const reservedAmbulances = new Set(activeIncidents.flatMap((i) => i.assignments.ambulances || []).map((a) => a.id));
+  const reservationKey = JSON.stringify([[...reservedAeds].sort(), [...reservedAmbulances].sort()]);
+  const network = useMemo(() => catalog && ({ ...catalog,
+    aeds: catalog.aeds.map((a) => ({ ...a, availability_status: reservedAeds.has(a.id) ? 'assigned' : a.availability_status === 'assigned' ? 'available' : a.availability_status,
+      eligible: !reservedAeds.has(a.id) && ['available', 'assigned'].includes(a.availability_status) && a.operational_status === 'operational' && a.accessible })),
+    ambulances: catalog.ambulances.map((a) => ({ ...a, availability_status: reservedAmbulances.has(a.id) ? 'assigned' : a.availability_status === 'assigned' ? 'available' : a.availability_status })),
+  }), [catalog, reservationKey]);
+  const location = active ? { latitude: incident.report.latitude, longitude: incident.report.longitude } : { latitude: Number(form.latitude), longitude: Number(form.longitude) };
+  const inRadius = (r) => calculateHaversineKm(location.latitude, location.longitude, r.latitude, r.longitude) <= Number(radius);
+  const nearbyAeds = network?.aeds.filter((a) => a.eligible && inRadius(a)) || [];
+  const nearbyAmbulances = network?.ambulances.filter((a) => a.availability_status === 'available' && inRadius(a)) || [];
 
   return <div className="space-y-5">
     <div className="rounded-2xl bg-[#171A1D] p-5 sm:p-6 text-white relative overflow-hidden">
@@ -138,6 +163,17 @@ export default function CardiacArrestView() {
     </div>
 
     {error && <div role="alert" className="flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertTriangle size={18} className="shrink-0" />{error}</div>}
+    {catalogError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">Resource catalogue unavailable. {catalogError}</p>}
+    {network && <Panel title="Statewide mock AED & ambulance network" subtitle="Every mapped hospital supplies one mock AED, one ALS ambulance and one BLS ambulance in this cardiac simulation.">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">{[
+        ['Hospital AED locations', network.summary.hospital_aeds], ['AEDs in full network', network.summary.total_aeds],
+        ['Hospital ambulances', network.summary.hospital_ambulances], ['Ambulances in full network', network.summary.total_ambulances],
+      ].map(([label, count]) => <div key={label}><p className="font-mono text-2xl font-bold text-stone-900">{count.toLocaleString()}</p><p className="mt-1 text-[11px] text-stone-500">{label}</p></div>)}</div>
+      <div className="mt-4 flex flex-wrap items-end gap-4 border-t border-stone-100 pt-3"><div className="w-48"><Field label="Resource discovery radius (km)"><input className={input} type="number" min="0.1" max="25" step="0.1" value={radius} onChange={(e) => setRadius(e.target.value)} /></Field></div>
+        <p className="pb-2 text-xs text-stone-600"><strong>{nearbyAeds.length}</strong> available AEDs · <strong>{nearbyAmbulances.length}</strong> available ambulances within {radius || '—'} km of the {active ? 'incident' : 'report location'}.</p></div>
+      <p className="mt-3 text-[11px] text-stone-500">All {network.summary.total_ambulances} vehicles and {network.summary.hospital_sites} mock receiving sites are offered to the solver statewide. It assigns vehicles according to patient demand. The radius filters discovery, not the statewide fleet. Hospital equipment, availability and six receiving places per site are scenario assumptions.</p>
+      {dispatched && !metrics.ambulance_base_count && <p className="mt-2 text-xs text-amber-700">This saved run retains its original assignments. Create a new report to dispatch from the expanded hospital network.</p>}
+    </Panel>}
     {!loaded && <p role="status" className="text-sm text-stone-500">Connecting to cardiac simulation backend…</p>}
     {!!incidents.length && <div className="flex flex-wrap items-center gap-3 text-xs"><label htmlFor="cardiac-history" className="font-semibold text-stone-600">Saved simulations</label>
       <select id="cardiac-history" className={`${input} max-w-lg`} disabled={!!busy} value={active ? incident.id : ''} onChange={(e) => { const selected = incidents.find((i) => i.id === e.target.value); if (selected) { setPlaying(false); accept(selected); } }}>
@@ -173,8 +209,8 @@ export default function CardiacArrestView() {
               <button className={secondary} disabled={!!busy} onClick={() => run('Saving review', async () => accept(await cardiacRequest(`/cardiac-arrest/${incident.id}/assessment`, 'POST', { ...review, responsive: asResponsive(review.responsive) }))) }><CheckCircle2 size={14} />Save review</button></div>}
             <p className="text-[10px] text-stone-400">Extraction structures caller reports. It does not diagnose or gate dispatch.</p>
           </div>
-          {canReview && <div className="space-y-3 mt-4 pt-4 border-t border-stone-100"><Field label="Coordination mode"><select className={input} value={mode} onChange={(e) => setMode(e.target.value)}><option value="baseline">A · Ambulance only</option><option value="aed">B · Ambulance + fictional AED runner</option><option value="full">C · Ambulance + AED + community responders</option></select></Field>
-            <Field label="AED / responder search radius (km)"><input className={input} type="number" min="0.1" max="25" step="0.1" value={radius} onChange={(e) => setRadius(e.target.value)} /></Field>
+          {canReview && <div className="space-y-3 mt-4 pt-4 border-t border-stone-100"><Field label="Coordination mode"><select className={input} value={mode} onChange={(e) => setMode(e.target.value)}><option value="baseline">A · Ambulance only</option><option value="aed">B · Ambulance + AED coordination</option><option value="full">C · Ambulance + AED + community responders</option></select></Field>
+            <p className="text-[11px] text-stone-500">AED / responder discovery radius: {radius} km. Adjust it in the network panel above.</p>
             <button className={`${primary} w-full`} disabled={!!busy || !Number.isFinite(Number(radius)) || Number(radius) <= 0 || Number(radius) > 25} onClick={() => run('Coordinating resources', async () => accept(await cardiacRequest(`/cardiac-arrest/${incident.id}/dispatch`, 'POST', { mode, search_radius_km: Number(radius), scene_minutes: 4 }))) }><ArrowRight size={15} />{busy === 'Coordinating resources' ? 'Solving & coordinating…' : 'Dispatch simulation resources'}</button></div>}
           {canDisrupt && <div className="mt-4 space-y-3 border-t border-stone-100 pt-4"><div className="flex flex-wrap gap-2">
             <button className={primary} disabled={!!busy && !playing} onClick={() => setPlaying(!playing)}>{playing ? <Pause size={14} /> : <Play size={14} />}{playing ? 'Pause' : 'Play · 10s / tick'}</button>
@@ -193,9 +229,9 @@ export default function CardiacArrestView() {
         </Panel>}
       </div>
 
-      <div className="space-y-5"><CardiacResponseMap incident={active ? incident : null} preview={{ latitude: Number(form.latitude) || 12.9249, longitude: Number(form.longitude) || 80.119 }} onPick={creating ? (lat, lng) => setForm((f) => ({ ...f, latitude: Number(lat.toFixed(5)), longitude: Number(lng.toFixed(5)) })) : undefined} />
+      <div className="space-y-5"><CardiacResponseMap incident={active ? incident : null} catalog={network} radius={Number(radius) || 25} preview={{ latitude: Number(form.latitude) || 12.9249, longitude: Number(form.longitude) || 80.119 }} onPick={creating ? (lat, lng) => setForm((f) => ({ ...f, latitude: Number(lat.toFixed(5)), longitude: Number(lng.toFixed(5)) })) : undefined} />
         {active && <><div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{[
-          [Ambulance, 'Ambulances', incident.assignments.ambulances?.length || 0], [Zap, 'Eligible AEDs', incident.nearby_aeds.length],
+          [Ambulance, 'Ambulances assigned', incident.assignments.ambulances?.length || 0], [Zap, 'Available AEDs nearby', nearbyAeds.length],
           [Users, 'Responders assigned', incident.assignments.responders?.length || 0], [HeartPulse, 'Unserved victims', metrics.unserved_victims ?? '—'],
         ].map(([Icon, label, value]) => <div key={label} className="rounded-xl border border-stone-200 bg-white p-3"><Icon size={16} className="text-burnt-600" /><p className="mt-2 text-2xl font-bold">{value}</p><p className="text-[10px] text-stone-500">{label}</p></div>)}</div>
           {incident.warnings.map((warning, i) => <p key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{warning}</p>)}
@@ -219,7 +255,7 @@ export default function CardiacArrestView() {
         <div className="overflow-x-auto"><table className="w-full text-xs text-left"><thead><tr className="border-b border-stone-200 text-stone-500">{['Configuration', 'Ambulance arrival', 'Responder arrival', 'AED at scene', 'Hospital arrival*', 'Unserved'].map((h) => <th key={h} className="p-3 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
           <tbody>{incident.comparison.map((row) => <tr key={row.mode} className={`border-b border-stone-100 ${row.mode === incident.options.mode ? 'bg-orange-50' : ''}`}><td className="p-3 font-semibold whitespace-nowrap">{row.label}</td>{['ambulance_arrival_minutes', 'responder_arrival_minutes', 'aed_access_minutes', 'hospital_arrival_minutes'].map((key) => <td key={key} className="p-3 font-mono">{minute(row[key])}</td>)}<td className="p-3">{row.unserved_victims}</td></tr>)}</tbody></table></div>
         <p className="mt-3 text-[11px] text-stone-500">Time reduction vs A for the selected mode: ambulance {incident.comparison.find((r) => r.mode === incident.options.mode)?.improvement_vs_baseline_pct?.ambulance_arrival_minutes ?? '—'}%; hospital {incident.comparison.find((r) => r.mode === incident.options.mode)?.improvement_vs_baseline_pct?.hospital_arrival_minutes ?? '—'}%. AED and responder reductions are undefined because A does not model those resources.</p>
-        <p className="mt-2 text-[11px] text-stone-500">*Last allocated hospital arrival from report. Mode B assumes a fictional runner starts at the scene; mode C uses an eligible CPR + AED responder. Walking at 5 km/h, distance ×1.35, facility access delay included. No CPR, shock delivery or survival benefit is inferred from arrival. Disruptions affect the actual timeline, while these initial projections remain fixed.</p>
+        <p className="mt-2 text-[11px] text-stone-500">*Last allocated hospital arrival from report. Modes B/C can deliver a mock hospital AED with its assigned ambulance; otherwise B uses a fictional runner and C an eligible CPR + AED responder. Walking at 5 km/h, distance ×1.35, facility access delay included. No CPR, shock delivery or survival benefit is inferred from arrival. Disruptions affect the actual timeline, while these initial projections remain fixed.</p>
       </Panel>}
       <Panel title="Unified incident timeline" subtitle="Incident lifecycle and resource events have independent timestamps. Every event below is simulated.">
         <ol className="space-y-0 max-h-[460px] overflow-y-auto">{[...incident.timeline].sort((a, b) => a.at_seconds - b.at_seconds).map((entry) => <li key={entry.id} className="flex gap-4 border-l-2 border-stone-100 ml-2 pb-4 pl-4 relative"><span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-burnt-500" /><span className="text-[11px] font-mono text-stone-400 whitespace-nowrap pt-0.5">T+{elapsed(entry.at_seconds)}</span><div><p className="text-xs font-medium text-stone-800">{entry.message}</p><p className="text-[10px] text-stone-400 mt-1">{entry.resource_id || entry.kind} · {new Date(entry.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false })} IST</p></div></li>)}</ol>

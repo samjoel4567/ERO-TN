@@ -1,7 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster';
 import { fetchRoadRoute } from '../services/routingService';
+
+function resourceIcon(symbol, color, count, offset = 0) {
+  const node = document.createElement('div');
+  Object.assign(node.style, { background: color, color: '#fff', border: '2px solid #fff', borderRadius: count ? '50%' : '7px',
+    width: count ? '34px' : '24px', height: count ? '34px' : '24px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    font: 'bold 11px system-ui', boxShadow: '0 2px 6px #0004' });
+  node.textContent = count ? `${symbol}${count}` : symbol;
+  return L.divIcon({ html: node, className: 'cardiac-resource-icon', iconSize: count ? [34, 34] : [24, 24],
+    iconAnchor: [offset + (count ? 17 : 12), count ? 17 : 12] });
+}
 
 function positionAlong(coordinates, fraction) {
   if (!coordinates?.length) return null;
@@ -12,31 +24,74 @@ function positionAlong(coordinates, fraction) {
     coordinates[index][1] + (next[1] - coordinates[index][1]) * (progress - index)];
 }
 
-export default function CardiacResponseMap({ incident, preview, onPick }) {
+export default function CardiacResponseMap({ incident, preview, onPick, catalog, radius = 25 }) {
   const container = useRef(null);
   const mapRef = useRef(null);
   const layers = useRef(null);
+  const resourceGroups = useRef(null);
   const pickRef = useRef(onPick);
   const fitted = useRef('');
   const [routes, setRoutes] = useState({});
   const [routingLabel, setRoutingLabel] = useState('Simulation uses labelled geometric travel estimates.');
+  const [visible, setVisible] = useState({ aeds: true, ambulances: true });
   pickRef.current = onPick;
   const transportKey = JSON.stringify([incident?.id, incident?.assignments?.ambulances?.map((a) => [a.id, a.latitude, a.longitude]),
     incident?.assignments?.hospitals?.map((h) => [h.id, h.latitude, h.longitude])]);
 
   useEffect(() => {
     // Avoid delayed zoom-transition callbacks after navigation removes the map.
+    fitted.current = '';
     const map = L.map(container.current, { center: [12.9249, 80.119], zoom: 14, scrollWheelZoom: false, zoomAnimation: false });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
     }).addTo(map);
     layers.current = L.layerGroup().addTo(map);
+    resourceGroups.current = {
+      aeds: L.markerClusterGroup({ maxClusterRadius: 40, showCoverageOnHover: false,
+        iconCreateFunction: (cluster) => resourceIcon('⚡', '#047857', cluster.getChildCount(), 18) }).addTo(map),
+      ambulances: L.markerClusterGroup({ maxClusterRadius: 40, showCoverageOnHover: false,
+        iconCreateFunction: (cluster) => resourceIcon('+', '#c2410c', cluster.getChildCount(), -18) }).addTo(map),
+    };
     map.on('click', ({ latlng }) => pickRef.current?.(latlng.lat, latlng.lng));
     mapRef.current = map;
     const observer = new ResizeObserver(() => map.invalidateSize());
     observer.observe(container.current);
     return () => { observer.disconnect(); map.remove(); mapRef.current = null; };
   }, []);
+
+  useEffect(() => {
+    if (!catalog || !resourceGroups.current) return;
+    const { aeds, ambulances } = resourceGroups.current;
+    aeds.clearLayers();
+    ambulances.clearLayers();
+    catalog.aeds.forEach((aed) => {
+      const label = document.createElement('div');
+      label.textContent = `${aed.facility_name} | MOCK AED | ${aed.availability_status} | ${aed.operational_status} | ${aed.access_note || aed.access_type}`;
+      L.marker([aed.latitude, aed.longitude], { icon: resourceIcon('⚡', aed.eligible ? '#047857' : '#78716c', null, 14) })
+        .bindPopup(label).bindTooltip(`${aed.facility_name} · mock AED`, { className: 'gis-tooltip', direction: 'top' }).addTo(aeds);
+    });
+    const bases = new Map();
+    catalog.ambulances.forEach((unit) => {
+      const base = bases.get(unit.base_id) || { ...unit, units: [] };
+      base.units.push(unit);
+      bases.set(unit.base_id, base);
+    });
+    bases.forEach((base) => {
+      const available = base.units.filter((u) => u.availability_status === 'available');
+      const label = document.createElement('div');
+      label.textContent = `${base.base_name} | MOCK AMBULANCES | ${available.length} available of ${base.units.length} | ${base.units.map((u) => `${u.ambulance_type}: ${u.availability_status}`).join(', ')}`;
+      L.marker([base.latitude, base.longitude], { icon: resourceIcon('+', available.length ? '#c2410c' : '#78716c', null, -14) })
+        .bindPopup(label).bindTooltip(`${base.base_name} · ${available.length} mock ambulances available`, { className: 'gis-tooltip', direction: 'top' }).addTo(ambulances);
+    });
+  }, [catalog]);
+
+  useEffect(() => {
+    if (!mapRef.current || !resourceGroups.current) return;
+    Object.entries(visible).forEach(([key, shown]) => {
+      if (shown) resourceGroups.current[key].addTo(mapRef.current);
+      else resourceGroups.current[key].removeFrom(mapRef.current);
+    });
+  }, [visible]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +116,8 @@ export default function CardiacResponseMap({ incident, preview, onPick }) {
     layers.current.clearLayers();
     const report = incident?.report;
     const scene = [report?.latitude ?? preview.latitude, report?.longitude ?? preview.longitude];
+    const discoveryArea = L.circle(scene, { radius: radius * 1000, color: '#78716c', weight: 1, dashArray: '5 6', fillOpacity: 0.025 });
+    discoveryArea.addTo(layers.current);
     const points = [scene];
     const marker = (point, label, color, radius = 7, filled = true) => {
       const node = document.createElement('div');
@@ -105,17 +162,32 @@ export default function CardiacResponseMap({ incident, preview, onPick }) {
         marker(end, `${h.hospital_name} · scenario intake ${h.patients_allocated}`, '#0284c7', 9);
       });
     }
-    const fitKey = `${incident?.id || ''}-${scene.join(',')}-${transportKey}`;
+    const fitKey = `${incident?.id || ''}-${scene.join(',')}-${transportKey}-${radius}`;
     if (fitKey !== fitted.current) {
-      mapRef.current.fitBounds(L.latLngBounds(points).pad(0.2), { maxZoom: 15 });
+      mapRef.current.fitBounds(L.latLngBounds(points).extend(discoveryArea.getBounds()).pad(0.05), { maxZoom: 15 });
       fitted.current = fitKey;
     }
-  }, [incident, preview, routes, transportKey]);
+  }, [incident, preview, routes, transportKey, radius]);
+
+  const showStatewide = () => {
+    if (catalog?.aeds.length) mapRef.current?.fitBounds(L.latLngBounds(catalog.aeds.map((a) => [a.latitude, a.longitude])).pad(0.05));
+  };
+  const showIncident = () => {
+    const scene = [incident?.report.latitude ?? preview.latitude, incident?.report.longitude ?? preview.longitude];
+    mapRef.current?.fitBounds(L.circle(scene, { radius: radius * 1000 }).getBounds().pad(0.05));
+  };
 
   return <div className="relative isolate z-0 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+    <div role="group" aria-label="Cardiac map resource layers" className="flex flex-wrap items-center gap-2 border-b border-stone-200 p-3 text-[11px] font-semibold">
+      <button type="button" aria-pressed={visible.aeds} onClick={() => setVisible((v) => ({ ...v, aeds: !v.aeds }))} className={`rounded-lg border px-2.5 py-1.5 ${visible.aeds ? 'border-emerald-700 bg-emerald-50 text-emerald-800' : 'border-stone-200 text-stone-500'}`}>⚡ AED locations ({catalog?.summary.total_aeds || 0})</button>
+      <button type="button" aria-pressed={visible.ambulances} onClick={() => setVisible((v) => ({ ...v, ambulances: !v.ambulances }))} className={`rounded-lg border px-2.5 py-1.5 ${visible.ambulances ? 'border-orange-700 bg-orange-50 text-orange-800' : 'border-stone-200 text-stone-500'}`}>+ Ambulance fleet ({catalog?.summary.total_ambulances || 0})</button>
+      <button type="button" disabled={!catalog} onClick={showStatewide} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-stone-600 disabled:opacity-40">Statewide view</button>
+      <button type="button" onClick={showIncident} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-stone-600">Incident view</button>
+    </div>
     <div ref={container} className="h-[360px] sm:h-[440px] w-full z-0" aria-label="Cardiac arrest simulation resource map" />
     <div className="p-3 text-[11px] text-stone-500 space-y-1">
       <p><span className="text-rose-700 font-semibold">● Incident</span> · <span className="text-burnt-600">● Ambulance</span> · <span className="text-emerald-700">● AED</span> · <span className="text-violet-700">● Responder</span> · <span className="text-sky-700">● Hospital</span></p>
+      <p>Green ⚡ markers show hospital/community AEDs; orange + markers show ambulance posts. Cluster numbers count locations, and each hospital post has 2 mock vehicles. Grey markers are unavailable or inaccessible. The dashed circle marks the {radius} km discovery radius.</p>
       <p>{routingLabel} Dashed community paths are walking estimates. Hospital legs show aggregate patient allocations; vehicle movement to a hospital is shown only for a single destination. All device and responder markers are synthetic.</p>
     </div>
   </div>;

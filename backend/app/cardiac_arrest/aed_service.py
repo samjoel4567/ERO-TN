@@ -12,6 +12,11 @@ def load_records(filename):
     return json.loads((Path(__file__).parent / "data" / filename).read_text(encoding="utf-8"))
 
 
+def all_aeds():
+    from .resource_catalog import hospital_aeds
+    return load_records("aeds.json") + hospital_aeds()
+
+
 def walking_minutes(start_lat, start_lng, end_lat, end_lng):
     return round(estimate_road_distance_km(start_lat, start_lng, end_lat, end_lng) / 5 * 60, 2)
 
@@ -29,9 +34,9 @@ def accessible_at(aed, at):
     return opens <= current < closes if opens < closes else current >= opens or current < closes
 
 
-def nearby_aeds(latitude, longitude, at, radius_km=5, reserved=None, records=None):
+def nearby_aeds(latitude, longitude, at, radius_km=25, reserved=None, records=None):
     candidates = []
-    for record in records if records is not None else load_records("aeds.json"):
+    for record in records if records is not None else all_aeds():
         if (record["id"] in (reserved or set()) or record["operational_status"] != "operational"
                 or record["availability_status"] != "available" or not accessible_at(record, at)):
             continue

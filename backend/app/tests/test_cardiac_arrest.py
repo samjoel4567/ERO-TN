@@ -84,11 +84,12 @@ class CardiacArrestTests(unittest.TestCase):
     def test_access_filter_operational_availability_and_hours(self):
         day = datetime.fromisoformat("2026-11-03T12:00:00+05:30")
         night = datetime.fromisoformat("2026-11-03T23:00:00+05:30")
-        by_day = {a["id"] for a in nearby_aeds(12.9249, 80.119, day)}
-        by_night = {a["id"] for a in nearby_aeds(12.9249, 80.119, night)}
+        records = load_records("aeds.json")
+        by_day = {a["id"] for a in nearby_aeds(12.9249, 80.119, day, radius_km=5, records=records)}
+        by_night = {a["id"] for a in nearby_aeds(12.9249, 80.119, night, radius_km=5, records=records)}
         self.assertEqual(by_day, {"SIM-AED-01", "SIM-AED-02"})
         self.assertEqual(by_night, {"SIM-AED-01"})
-        self.assertEqual(nearby_aeds(12.9249, 80.119, day, reserved=by_day), [])
+        self.assertEqual(nearby_aeds(12.9249, 80.119, day, radius_km=5, reserved=by_day, records=records), [])
         self.assertTrue(all(a["data_origin"] == "synthetic_simulation" for a in load_records("aeds.json")))
 
     def test_overnight_aed_access_window(self):
@@ -119,7 +120,8 @@ class CardiacArrestTests(unittest.TestCase):
         self.assertIsNotNone(incident["analytics"]["hospital_arrival_minutes"])
 
     def test_sparse_area_continues_without_aed_or_responders(self):
-        incident = self.dispatch(self.report(latitude=12.9715, longitude=79.1385))
+        with patch("app.cardiac_arrest.dispatch_service.nearby_aeds", return_value=[]):
+            incident = self.dispatch(self.report(latitude=12.9715, longitude=79.1385))
         self.assertEqual(incident["assignments"]["aeds"], [])
         self.assertEqual(incident["assignments"]["responders"], [])
         self.assertTrue(incident["assignments"]["ambulances"])
@@ -163,7 +165,7 @@ class CardiacArrestTests(unittest.TestCase):
         self.assertEqual(retained, unaffected)
 
     def test_no_hospital_capacity_reports_unserved_without_fabricated_dispatch(self):
-        with patch("app.cardiac_arrest.dispatch_service.discover_nearby_hospitals_for_incident", return_value=[]):
+        with patch("app.cardiac_arrest.dispatch_service.cardiac_hospitals", return_value=[]):
             incident = self.dispatch(self.report())
         self.assertEqual(incident["analytics"]["unserved_victims"], 1)
         self.assertEqual(incident["assignments"]["hospitals"], [])

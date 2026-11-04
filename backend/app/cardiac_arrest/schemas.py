@@ -47,7 +47,7 @@ class AssessmentUpdate(StrictRequest):
 
 class DispatchOptions(StrictRequest):
     mode: Literal["baseline", "aed", "full"] = "full"
-    search_radius_km: float = Field(default=5, gt=0, le=25)
+    search_radius_km: float = Field(default=25, gt=0, le=25)
     scene_minutes: float = Field(default=4, ge=0, le=30)
 
 
